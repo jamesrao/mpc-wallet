@@ -174,10 +174,13 @@ jobs:
 
   # 4. 安全扫描
   security-scan:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     
     - name: Rust安全审计
       run: |
@@ -244,7 +247,7 @@ jobs:
         echo "🎉 所有测试通过，准备部署！" >> test-reports/summary.md
     
     - name: 上传测试报告
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-reports
         path: test-reports/
