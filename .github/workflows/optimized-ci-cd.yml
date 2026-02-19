@@ -1,0 +1,208 @@
+name: MPC钱包优化CI/CD流水线
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 1'  # 每周一凌晨2点自动安全扫描
+
+env:
+  NODE_VERSION: '18'
+  GO_VERSION: '1.23'
+  RUST_VERSION: 'stable'
+
+jobs:
+  # 1. 代码质量检查（多语言）
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 多语言代码质量检查
+      uses: github/super-linter@v4
+      env:
+        VALIDATE_ALL_CODEBASE: false
+        VALIDATE_JAVASCRIPT_ES: true
+        VALIDATE_TYPESCRIPT_ES: true
+        VALIDATE_GO: true
+        VALIDATE_RUST: true
+        DEFAULT_BRANCH: main
+
+  # 2. 前端构建测试
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend-web/package-lock.json
+    
+    - name: 安装依赖和构建
+      run: |
+        cd frontend-web
+        npm ci
+        npm run build
+        npm run lint
+    
+    - name: Lighthouse性能测试
+      uses: treosh/lighthouse-ci-action@v10
+      with:
+        configPath: './lighthouse.config.js'
+        uploadArtifacts: true
+
+  # 3. 后端Go测试
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Go环境
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache: true
+        cache-dependency-path: backend-services/api/go.sum
+    
+    - name: Go构建和测试
+      run: |
+        cd backend-services/api
+        go build -v ./...
+        go test -v ./... -coverprofile=coverage.out
+        go tool cover -html=coverage.out -o coverage.html
+    
+    - name: 上传测试报告
+      uses: actions/upload-artifact@v3
+      with:
+        name: go-coverage-report
+        path: backend-services/api/coverage.html
+
+  # 4. MPC核心Rust测试
+  mpc-core-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: Rust缓存
+      uses: actions/cache@v3
+      with:
+        path: mpc-core/target
+        key: ${{ runner.os }}-rust-${{ hashFiles('mpc-core/Cargo.lock') }}
+    
+    - name: Rust构建和测试
+      run: |
+        cd mpc-core
+        cargo build --release
+        cargo test --verbose
+        cargo clippy -- -D warnings
+
+  # 5. 安全扫描
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: CodeQL安全分析
+      uses: github/codeql-action/init@v2
+      with:
+        languages: javascript, typescript, go, rust
+    
+    - name: 执行安全分析
+      uses: github/codeql-action/analyze@v2
+    
+    - name: 依赖安全审查
+      uses: actions/dependency-review-action@v3
+
+  # 6. 集成测试
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: [frontend-build, backend-tests, mpc-core-tests]
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mpc_wallet_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 启动测试环境
+      run: docker-compose -f docker-compose.test-minimal.yml up -d
+    
+    - name: 运行集成测试
+      run: |
+        # 等待服务就绪
+        ./scripts/wait-for-services.sh
+        # 运行端到端测试
+        npm run test:e2e
+
+  # 7. 部署（仅main分支）
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [code-quality, frontend-build, backend-tests, mpc-core-tests, security-scan, integration-tests]
+    environment: production
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 构建Docker镜像
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false
+        tags: mpc-wallet:latest
+    
+    - name: 部署到生产环境
+      run: |
+        echo "🚀 开始部署到生产环境..."
+        echo "提交: ${{ github.sha }}"
+        # 这里添加您的实际部署脚本
+        ./scripts/deploy-prod.sh
+      env:
+        DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+
+  # 8. 通知和报告
+  notify:
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always()
+    steps:
+    - name: 发送通知
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
