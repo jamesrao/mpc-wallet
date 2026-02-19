@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: supplychain-finance
+  labels:
+    name: supplychain-finance
+    environment: production

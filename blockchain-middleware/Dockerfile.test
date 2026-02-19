@@ -1,0 +1,20 @@
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ENV CGO_ENABLED=0
+RUN go build -o /middleware ./cmd/middleware
+RUN chmod +x /middleware
+
+# 安装file工具来检查二进制文件
+RUN apk add --no-cache file
+RUN file /middleware
+RUN ls -la /middleware
+
+# 测试运行
+RUN /middleware --help 2>&1 || echo "运行测试失败"

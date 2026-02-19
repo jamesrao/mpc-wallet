@@ -1,0 +1,115 @@
+# Kubernetes网络策略配置
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+  namespace: supplychain-finance
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+# 允许前端Web应用访问
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-web
+  namespace: supplychain-finance
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend-web
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 80
+---
+# 允许API访问
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-blockchain-middleware
+  namespace: supplychain-finance
+spec:
+  podSelector:
+    matchLabels:
+      app: blockchain-middleware
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend-web
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+# 允许MPC服务访问
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mpc-core
+  namespace: supplychain-finance
+spec:
+  podSelector:
+    matchLabels:
+      app: mpc-core
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: blockchain-middleware
+    ports:
+    - protocol: TCP
+      port: 3000
+---
+# 数据库访问控制
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-database-access
+  namespace: supplychain-finance
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: blockchain-middleware
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# Redis访问控制
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-access
+  namespace: supplychain-finance
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: blockchain-middleware
+    ports:
+    - protocol: TCP
+      port: 6379

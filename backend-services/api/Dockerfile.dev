@@ -1,0 +1,55 @@
+# 后端API服务开发环境Dockerfile
+
+FROM golang:1.23-alpine AS builder
+
+# 安装依赖
+RUN apk add --no-cache git gcc musl-dev
+
+WORKDIR /app
+
+# 设置Go代理（使用国内镜像）
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=off
+
+# 复制go模块文件
+COPY go.mod go.sum ./
+
+# 下载依赖
+RUN go mod download
+
+# 复制源代码
+COPY . .
+
+# 构建静态二进制文件
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+RUN go build -ldflags="-extldflags=-static" -a -o /app/api ./cmd/api
+RUN chmod +x /app/api
+
+# 检查二进制文件类型（调试用）
+RUN apk add --no-cache file
+RUN file /app/api
+
+# 运行阶段
+FROM alpine:latest
+
+# 安装运行时依赖
+RUN apk add --no-cache ca-certificates
+
+# 创建非root用户
+RUN adduser -D -u 1000 apiuser
+
+WORKDIR /app
+
+# 复制可执行文件
+COPY --from=builder /app/api .
+
+# 切换到非root用户
+USER apiuser
+
+# 暴露端口
+EXPOSE 3000
+
+# 启动服务
+CMD ["/app/api"]

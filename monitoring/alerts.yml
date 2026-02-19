@@ -1,0 +1,29 @@
+groups:
+- name: mpc-wallet-alerts
+  rules:
+  - alert: ServiceDown
+    expr: up{job="mpc-wallet-system"} == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "服务 {{ $labels.instance }} 已下线"
+      description: "服务 {{ $labels.instance }} 已连续2分钟不可用"
+
+  - alert: HighCPUUsage
+    expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "高CPU使用率"
+      description: "实例 {{ $labels.instance }} 的CPU使用率超过80%"
+
+  - alert: HighMemoryUsage
+    expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "高内存使用率"
+      description: "实例 {{ $labels.instance }} 的内存使用率超过85%"

@@ -1,0 +1,31 @@
+# 忽略本地构建的二进制文件
+api
+bin/
+*.exe
+*.out
+*.test
+
+# 忽略开发环境文件
+.env
+.env.local
+.env.development
+
+# 忽略日志文件
+*.log
+
+# 忽略IDE文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 忽略操作系统文件
+.DS_Store
+Thumbs.db
+
+# 忽略测试缓存
+__pycache__/
+*.pyc
+
+# 忽略依赖目录（在Docker中会重新下载）
+vendor/

@@ -1,0 +1,138 @@
+# GitLab CI/CD 流水线配置
+variables:
+  DOCKER_REGISTRY: registry.gitlab.com/supplychain-finance
+  KUBE_NAMESPACE: supplychain-finance
+  
+stages:
+  - test
+  - build
+  - security-scan
+  - deploy-dev
+  - deploy-staging
+  - deploy-production
+
+# 缓存配置
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+    - target/
+    - vendor/
+
+# 镜像构建模板
+.docker-build:
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build -t $DOCKER_REGISTRY/${CI_PROJECT_NAME}-${SERVICE_NAME}:${CI_COMMIT_SHA} -f infrastructure/docker/Dockerfile.${SERVICE_NAME} .
+    - docker push $DOCKER_REGISTRY/${CI_PROJECT_NAME}-${SERVICE_NAME}:${CI_COMMIT_SHA}
+    - docker tag $DOCKER_REGISTRY/${CI_PROJECT_NAME}-${SERVICE_NAME}:${CI_COMMIT_SHA} $DOCKER_REGISTRY/${CI_PROJECT_NAME}-${SERVICE_NAME}:latest
+    - docker push $DOCKER_REGISTRY/${CI_PROJECT_NAME}-${SERVICE_NAME}:latest
+
+# 测试阶段
+test-unit:
+  stage: test
+  image: node:18-alpine
+  script:
+    - cd frontend-web && npm install && npm test
+    - cd ../blockchain-middleware && go test ./...
+    - cd ../mpc-core && cargo test
+
+# 构建阶段
+build-middleware:
+  extends: .docker-build
+  stage: build
+  variables:
+    SERVICE_NAME: middleware
+  only:
+    - main
+    - develop
+
+build-mpc:
+  extends: .docker-build
+  stage: build
+  variables:
+    SERVICE_NAME: mpc
+  only:
+    - main
+    - develop
+
+build-frontend:
+  extends: .docker-build
+  stage: build
+  variables:
+    SERVICE_NAME: frontend
+  only:
+    - main
+    - develop
+
+# 安全扫描
+security-scan:
+  stage: security-scan
+  image: aquasec/trivy:latest
+  script:
+    - trivy image --exit-code 0 --severity HIGH,CRITICAL $DOCKER_REGISTRY/${CI_PROJECT_NAME}-middleware:${CI_COMMIT_SHA}
+    - trivy image --exit-code 0 --severity HIGH,CRITICAL $DOCKER_REGISTRY/${CI_PROJECT_NAME}-mpc:${CI_COMMIT_SHA}
+    - trivy image --exit-code 0 --severity HIGH,CRITICAL $DOCKER_REGISTRY/${CI_PROJECT_NAME}-frontend:${CI_COMMIT_SHA}
+
+# 开发环境部署
+deploy-dev:
+  stage: deploy-dev
+  image: alpine/k8s:1.28
+  environment:
+    name: development
+    url: https://dev.supplychain-finance.com
+  script:
+    - echo "部署到开发环境"
+    - kubectl config use-context dev-cluster
+    - kubectl set image deployment/blockchain-middleware blockchain-middleware=$DOCKER_REGISTRY/${CI_PROJECT_NAME}-middleware:${CI_COMMIT_SHA} -n $KUBE_NAMESPACE
+    - kubectl set image deployment/mpc-core mpc-core=$DOCKER_REGISTRY/${CI_PROJECT_NAME}-mpc:${CI_COMMIT_SHA} -n $KUBE_NAMESPACE
+    - kubectl set image deployment/frontend-web frontend-web=$DOCKER_REGISTRY/${CI_PROJECT_NAME}-frontend:${CI_COMMIT_SHA} -n $KUBE_NAMESPACE
+  only:
+    - develop
+
+# 预生产环境部署
+deploy-staging:
+  stage: deploy-staging
+  image: alpine/k8s:1.28
+  environment:
+    name: staging
+    url: https://staging.supplychain-finance.com
+  script:
+    - echo "部署到预生产环境"
+    - kubectl config use-context staging-cluster
+    - kubectl apply -f infrastructure/kubernetes/ -n $KUBE_NAMESPACE
+  only:
+    - main
+  when: manual
+
+# 生产环境部署
+deploy-production:
+  stage: deploy-production
+  image: alpine/k8s:1.28
+  environment:
+    name: production
+    url: https://supplychain-finance.com
+  script:
+    - echo "部署到生产环境"
+    - kubectl config use-context production-cluster
+    - kubectl apply -f infrastructure/kubernetes/ -n $KUBE_NAMESPACE
+  only:
+    - main
+  when: manual
+
+# 基础设施部署
+infrastructure:
+  stage: deploy-dev
+  image: hashicorp/terraform:latest
+  script:
+    - cd infrastructure/terraform
+    - terraform init
+    - terraform plan
+    - terraform apply -auto-approve
+  only:
+    - main
+  when: manual

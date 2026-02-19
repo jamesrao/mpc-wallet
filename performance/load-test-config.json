@@ -1,0 +1,44 @@
+{
+  "load_test": {
+    "scenarios": [
+      {
+        "name": "用户注册流程",
+        "users": 100,
+        "duration": "5m",
+        "ramp_up": "30s",
+        "requests": [
+          {
+            "method": "POST",
+            "url": "http://localhost:3000/api/v1/auth/register",
+            "body": {
+              "username": "testuser_{{id}}",
+              "email": "test{{id}}@example.com",
+              "password": "TestPassword123!"
+            }
+          }
+        ]
+      },
+      {
+        "name": "MPC密钥生成",
+        "users": 50,
+        "duration": "10m",
+        "ramp_up": "60s",
+        "requests": [
+          {
+            "method": "POST",
+            "url": "http://localhost:8080/api/v1/keygen",
+            "body": {
+              "participants": ["user1", "user2", "user3"],
+              "threshold": 2
+            }
+          }
+        ]
+      }
+    ],
+    "thresholds": {
+      "http_req_duration": ["p(95)<100"],
+      "http_req_failed": ["rate<0.01"],
+      "iterations": ["count>1000"]
+    }
+  }
+}

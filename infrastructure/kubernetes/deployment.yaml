@@ -1,0 +1,150 @@
+# 区块链中间件部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blockchain-middleware
+  namespace: supplychain-finance
+  labels:
+    app: blockchain-middleware
+    component: middleware
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: blockchain-middleware
+  template:
+    metadata:
+      labels:
+        app: blockchain-middleware
+        component: middleware
+    spec:
+      containers:
+      - name: blockchain-middleware
+        image: supplychain-finance/blockchain-middleware:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-secrets
+              key: url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-secrets
+              key: url
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+# MPC核心服务部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mpc-core
+  namespace: supplychain-finance
+  labels:
+    app: mpc-core
+    component: crypto
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mpc-core
+  template:
+    metadata:
+      labels:
+        app: mpc-core
+        component: crypto
+    spec:
+      containers:
+      - name: mpc-core
+        image: supplychain-finance/mpc-core:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: MPC_THRESHOLD
+          value: "3"
+        - name: MPC_TOTAL_SHARES
+          value: "5"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+# 前端Web应用部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-web
+  namespace: supplychain-finance
+  labels:
+    app: frontend-web
+    component: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: frontend-web
+  template:
+    metadata:
+      labels:
+        app: frontend-web
+        component: frontend
+    spec:
+      containers:
+      - name: frontend-web
+        image: supplychain-finance/frontend-web:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        env:
+        - name: API_BASE_URL
+          value: "http://blockchain-middleware:8080"
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10

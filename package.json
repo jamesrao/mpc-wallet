@@ -1,0 +1,36 @@
+{
+  "name": "mpc-wallet",
+  "version": "1.0.0",
+  "description": "基于门限签名（MPC）技术的企业级Web3钱包，专注于跨境电商区块链供应链金融平台。",
+  "main": "index.js",
+
+  "scripts": {
+    "test": "node scripts/automated-test-runner.js",
+    "test:unit": "node scripts/lightweight-test-runner.js",
+    "test:integration": "node scripts/automated-test-runner.js",
+    "test:e2e": "./test_e2e_simple.sh",
+    "test:performance": "node scripts/automated-test-runner.js",
+    "test:report": "./scripts/run-tests.sh",
+    "start:test": "docker-compose -f docker-compose.test.yml up -d",
+    "stop:test": "docker-compose -f docker-compose.test.yml down",
+    "ci": "npm run test:unit && npm run test:integration && npm run test:performance"
+  },
+  "keywords": ["mpc", "wallet", "blockchain", "web3", "cryptography"],
+  "author": "MPC Wallet Team",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.13.5",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "mocha": "^10.2.0",
+    "chai": "^4.3.10",
+    "nyc": "^15.1.0",
+    "prettier": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

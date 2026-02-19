@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  backend-api:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - MPC_SERVICE_URL=http://localhost:8080
+      - BLOCKCHAIN_MIDDLEWARE_URL=http://localhost:8081
+    # command: /app/api
+  frontend-web:
+    command: npm run dev

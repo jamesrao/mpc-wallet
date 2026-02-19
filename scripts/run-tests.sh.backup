@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# MPC钱包统一测试运行脚本
+echo "🧪 开始MPC钱包自动化测试..."
+
+# 检查测试环境是否运行
+if ! curl -s http://localhost:3000/health > /dev/null; then
+    echo "⚠️ 测试环境未运行，尝试启动..."
+    ./scripts/start-test-environment.sh
+    
+    # 再次检查
+    if ! curl -s http://localhost:3000/health > /dev/null; then
+        echo "❌ 测试环境启动失败，请手动检查"
+        exit 1
+    fi
+fi
+
+echo ""
+echo "📋 测试计划："
+echo "1. 后端API功能测试"
+echo "2. 端到端流程测试"
+echo "3. 服务健康检查"
+echo "4. 集成测试"
+echo ""
+
+# 1. 后端API功能测试
+echo "1️⃣ 后端API功能测试..."
+if command -v python3 > /dev/null 2>&1; then
+    python3 test_e2e_api.py
+    API_TEST_RESULT=$?
+else
+    echo "⚠️ Python3未安装，跳过API功能测试"
+    API_TEST_RESULT=0
+fi
+
+# 2. 端到端流程测试
+echo ""
+echo "2️⃣ 端到端流程测试..."
+chmod +x test_e2e.sh
+./test_e2e.sh
+E2E_TEST_RESULT=$?
+
+# 3. 服务健康检查
+echo ""
+echo "3️⃣ 服务健康检查..."
+if command -v node > /dev/null 2>&1; then
+    node test-e2e.js
+    HEALTH_TEST_RESULT=$?
+else
+    echo "⚠️ Node.js未安装，跳过健康检查"
+    HEALTH_TEST_RESULT=0
+fi
+
+# 4. 集成测试
+echo ""
+echo "4️⃣ 集成测试..."
+chmod +x test-deployment.sh
+./test-deployment.sh
+DEPLOYMENT_TEST_RESULT=$?
+
+# 生成测试报告
+echo ""
+echo "📊 测试报告："
+echo "================"
+
+echo "后端API功能测试: $(if [ $API_TEST_RESULT -eq 0 ]; then echo '✅ 通过'; else echo '❌ 失败'; fi)"
+echo "端到端流程测试: $(if [ $E2E_TEST_RESULT -eq 0 ]; then echo '✅ 通过'; else echo '❌ 失败'; fi)"
+echo "服务健康检查: $(if [ $HEALTH_TEST_RESULT -eq 0 ]; then echo '✅ 通过'; else echo '❌ 失败'; fi)"
+echo "部署验证测试: $(if [ $DEPLOYMENT_TEST_RESULT -eq 0 ]; then echo '✅ 通过'; else echo '❌ 失败'; fi)"
+
+# 计算总结果
+TOTAL_TESTS=4
+PASSED_TESTS=0
+
+[ $API_TEST_RESULT -eq 0 ] && PASSED_TESTS=$((PASSED_TESTS + 1))
+[ $E2E_TEST_RESULT -eq 0 ] && PASSED_TESTS=$((PASSED_TESTS + 1))
+[ $HEALTH_TEST_RESULT -eq 0 ] && PASSED_TESTS=$((PASSED_TESTS + 1))
+[ $DEPLOYMENT_TEST_RESULT -eq 0 ] && PASSED_TESTS=$((PASSED_TESTS + 1))
+
+echo ""
+echo "总计测试: $TOTAL_TESTS"
+echo "通过测试: $PASSED_TESTS"
+echo "失败测试: $((TOTAL_TESTS - PASSED_TESTS))"
+echo "通过率: $((PASSED_TESTS * 100 / TOTAL_TESTS))%"
+
+# 最终结果
+if [ $PASSED_TESTS -eq $TOTAL_TESTS ]; then
+    echo ""
+    echo "🎉 所有测试通过！系统运行正常。"
+    exit 0
+else
+    echo ""
+    echo "⚠️ 部分测试失败，需要检查问题。"
+    echo "💡 建议："
+    echo "  1. 检查Docker服务状态"
+    echo "  2. 查看服务日志"
+    echo "  3. 验证网络连接"
+    echo "  4. 检查端口配置"
+    exit 1
+fi

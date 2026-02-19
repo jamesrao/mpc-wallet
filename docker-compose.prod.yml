@@ -1,0 +1,171 @@
+version: '3.8'
+
+services:
+  # 数据库服务
+  postgres:
+    image: postgres:15-alpine
+    container_name: mpc-wallet-postgres
+    environment:
+      POSTGRES_DB: mpc_wallet
+      POSTGRES_USER: mpc_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_production_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - mpc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mpc_user -d mpc_wallet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: mpc-wallet-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - mpc-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # MPC核心服务
+  mpc-core:
+    build:
+      context: ./mpc-core
+      dockerfile: Dockerfile
+    container_name: mpc-wallet-mpc-core
+    environment:
+      - RUST_LOG=info
+      - SERVER_ADDRESS=0.0.0.0
+      - SERVER_PORT=8080
+    ports:
+      - "8081:8080"
+    networks:
+      - mpc-network
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 区块链中间件服务
+  blockchain-middleware:
+    build:
+      context: ./blockchain-middleware
+      dockerfile: Dockerfile
+    container_name: mpc-wallet-middleware
+    environment:
+      - SERVER_ADDRESS=0.0.0.0
+      - SERVER_PORT=8081
+      - DB_HOST=postgres
+      - DB_USER=mpc_user
+      - DB_PASSWORD=${DB_PASSWORD:-secure_production_password}
+      - DB_NAME=mpc_wallet
+      - DB_SSL_MODE=disable
+      - REDIS_URL=redis://redis:6379
+      - ETHEREUM_RPC_URL=${ETHEREUM_RPC_URL:-https://mainnet.infura.io/v3/your_infura_project_id}
+      - POLYGON_RPC_URL=${POLYGON_RPC_URL:-https://polygon-mainnet.infura.io/v3/your_infura_project_id}
+      - BSC_RPC_URL=${BSC_RPC_URL:-https://bsc-dataseed.binance.org}
+    ports:
+      - "8082:8081"
+    networks:
+      - mpc-network
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 后端API服务
+  api:
+    build:
+      context: ./backend-services/api
+      dockerfile: Dockerfile
+    container_name: mpc-wallet-api
+    environment:
+      - SERVER_ADDRESS=0.0.0.0
+      - SERVER_PORT=3000
+      - DB_HOST=postgres
+      - DB_USER=mpc_user
+      - DB_PASSWORD=${DB_PASSWORD:-secure_production_password}
+      - DB_NAME=mpc_wallet
+      - DB_SSL_MODE=disable
+      - MPC_SERVICE_URL=http://mpc-core:8080
+      - BLOCKCHAIN_MIDDLEWARE_URL=http://blockchain-middleware:8081
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID:-your_facebook_app_id_here}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET:-your_facebook_app_secret_here}
+      - FACEBOOK_REDIRECT_URI=${FACEBOOK_REDIRECT_URI:-https://yourdomain.com/api/v1/auth/facebook/callback}
+      - JWT_SECRET=${JWT_SECRET:-production-jwt-secret-key}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-production-encryption-key}
+    ports:
+      - "3000:3000"
+    networks:
+      - mpc-network
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mpc-core:
+        condition: service_healthy
+      blockchain-middleware:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: mpc-wallet-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    networks:
+      - mpc-network
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  mpc-network:
+    driver: bridge

@@ -1,0 +1,47 @@
+# 前端Web开发环境Dockerfile
+
+FROM node:18-alpine as builder
+
+# 安装依赖
+RUN apk add --no-cache git
+
+# 设置npm国内镜像（淘宝）
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+
+WORKDIR /app
+
+# 复制package文件
+COPY package.json package-lock.json ./
+
+# 安装依赖
+RUN npm ci --only=production
+
+# 复制源代码
+COPY . .
+
+# 构建应用
+RUN npm run build
+
+# 运行阶段
+FROM node:18-alpine
+
+# 创建非root用户（如果1000已存在则使用默认UID）
+RUN adduser -D frontenduser || true
+
+WORKDIR /app
+
+# 复制构建产物和node_modules
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+# public目录可能不存在，暂时注释
+# COPY --from=builder /app/public ./public
+COPY --from=builder /app/package.json ./
+
+# 切换到非root用户
+USER frontenduser
+
+# 暴露端口
+EXPOSE 3000
+
+# 启动服务
+CMD ["npm", "start"]

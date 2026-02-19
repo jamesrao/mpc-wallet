@@ -1,0 +1,45 @@
+# 区块链中间件开发环境Dockerfile
+
+FROM golang:1.21-alpine AS builder
+
+# 安装依赖
+RUN apk add --no-cache git gcc musl-dev
+
+WORKDIR /app
+
+# 设置Go代理
+ENV GOPROXY=https://proxy.golang.org,direct
+ENV GOSUMDB=off
+
+# 复制go模块文件
+COPY go.mod go.sum ./
+
+# 下载依赖
+RUN go mod download
+
+# 复制源代码
+COPY . .
+
+# 构建应用（完全静态链接）
+ENV CGO_ENABLED=0
+RUN go build -ldflags="-extldflags=-static" -a -o /middleware ./cmd/middleware
+RUN chmod +x /middleware
+
+# 检查二进制文件类型
+RUN apk add --no-cache file
+RUN file /middleware
+
+# 运行时镜像 - 使用scratch（最小化）
+FROM scratch
+
+# 复制二进制文件
+COPY --from=builder /middleware /middleware
+
+# 复制时区文件（可选）
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+# 暴露端口
+EXPOSE 8081
+
+# 启动服务
+CMD ["/middleware"]

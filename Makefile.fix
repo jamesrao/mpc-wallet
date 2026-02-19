@@ -1,0 +1,57 @@
+.PHONY: help dev-up dev-down dev-logs test build clean
+
+# Default target
+help:
+	@echo "MPC Web3 Wallet Development Commands"
+	@echo ""
+	@echo "Common commands:"
+	@echo "  make dev-up         Start development environment"
+	@echo "  make dev-down       Stop development environment"
+	@echo "  make dev-logs       View development logs"
+	@echo "  make test           Run tests"
+	@echo "  make build          Build all services"
+	@echo "  make clean          Clean build artifacts"
+	@echo "  make frontend-dev   Frontend development"
+
+# Development environment
+dev-up:
+	docker-compose up -d --build
+	@echo "Development environment started!"
+	@echo "- API Service: http://localhost:3000"
+	@echo "- Frontend Web: http://localhost:3001"
+	@echo "- MPC Service: http://localhost:8080"
+	@echo "- Ganache: http://localhost:8545"
+	@echo "- PostgreSQL: localhost:5432"
+	@echo "- Redis: localhost:6379"
+
+dev-down:
+	docker-compose down
+
+dev-logs:
+	docker-compose logs -f
+
+# Tests
+test:
+	@echo "Running tests..."
+	npm run test:unit
+	npm run test:integration
+	npm run test:e2e
+	@echo "Tests completed!"
+
+# Build
+build:
+	@echo "Building all services..."
+	cd frontend-web && npm run build
+	@echo "Build completed!"
+
+# Clean
+clean:
+	@echo "Cleaning build artifacts..."
+	cd frontend-web && rm -rf build dist node_modules
+	docker-compose down -v --remove-orphans
+	@echo "Clean completed!"
+
+# Frontend development
+frontend-dev:
+	@echo "Starting frontend development server..."
+	cd frontend-web && npm run dev

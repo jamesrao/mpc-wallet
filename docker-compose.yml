@@ -1,0 +1,163 @@
+version: '3.8'
+
+services:
+  # 数据库
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: mpc_wallet
+      POSTGRES_USER: mpc_user
+      POSTGRES_PASSWORD: mpc_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mpc_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 以太坊开发节点
+  ganache:
+    image: trufflesuite/ganache:latest
+    ports:
+      - "8545:8545"
+    command:
+      - "--wallet.seed=mpc_wallet_seed_1234567890"
+      - "--database.dbPath=/data"
+      - "--miner.blockTime=2"
+      - "--chain.chainId=1337"
+    volumes:
+      - ganache_data:/data
+
+  # 区块链节点（Polygon测试网）
+  polygon-node:
+    image: ethereum/client-go:stable
+    command:
+      - "--goerli"
+      - "--syncmode"
+      - "light"
+      - "--http"
+      - "--http.addr"
+      - "0.0.0.0"
+      - "--http.api"
+      - "eth,net,web3,debug"
+      - "--http.corsdomain"
+      - "*"
+      - "--http.vhosts"
+      - "*"
+    ports:
+      - "8546:8545"
+    volumes:
+      - polygon_data:/root/.ethereum
+
+  # MPC核心服务（待实现）
+  mpc-core:
+    build:
+      context: ./mpc-core
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://mpc_user:mpc_password@postgres:5432/mpc_wallet
+      - REDIS_URL=redis://redis:6379
+      - RUST_LOG=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./mpc-core:/app
+      - cargo_cache:/usr/local/cargo/registry
+
+  # 区块链中间件（待实现）
+  blockchain-middleware:
+    build:
+      context: ./blockchain-middleware
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8081:8081"
+    environment:
+      - ETHEREUM_RPC_URL=http://ganache:8545
+      - POLYGON_RPC_URL=http://polygon-node:8545
+      - DATABASE_URL=postgres://mpc_user:mpc_password@postgres:5432/mpc_wallet
+    depends_on:
+      - ganache
+      - polygon-node
+      - postgres
+    volumes:
+      - ./blockchain-middleware:/app
+
+  # 后端API服务（待实现）
+  backend-api:
+    build:
+      context: ./backend-services/api
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgres://mpc_user:mpc_password@postgres:5432/mpc_wallet
+      - REDIS_URL=redis://redis:6379
+      - MPC_SERVICE_URL=http://mpc-core:8080
+      - BLOCKCHAIN_MIDDLEWARE_URL=http://blockchain-middleware:8081
+    depends_on:
+      - mpc-core
+      - blockchain-middleware
+      - postgres
+      - redis
+    # volumes:
+    #   - ./backend-services/api:/app
+
+  # 前端Web（待实现）
+  frontend-web:
+    build:
+      context: ./frontend-web
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3001:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3000
+      - REACT_APP_MPC_SERVICE_URL=http://localhost:8080
+    depends_on:
+      - backend-api
+    volumes:
+      - ./frontend-web:/app
+      - /app/node_modules
+
+  # 反向代理/API网关
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - backend-api
+      - frontend-web
+      - mpc-core
+
+volumes:
+  postgres_data:
+  redis_data:
+  ganache_data:
+  polygon_data:
+  cargo_cache:

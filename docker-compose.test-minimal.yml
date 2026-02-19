@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # 数据库
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: mpc_wallet
+      POSTGRES_USER: mpc_user
+      POSTGRES_PASSWORD: mpc_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mpc_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 以太坊开发节点
+  ganache:
+    image: trufflesuite/ganache:latest
+    ports:
+      - "8545:8545"
+    command:
+      - "--wallet.seed=mpc_wallet_seed_1234567890"
+      - "--database.dbPath=/data"
+      - "--miner.blockTime=2"
+      - "--chain.chainId=1337"
+    volumes:
+      - ganache_data:/data
+
+  # 后端API服务（简化版，直接运行）
+  backend-api:
+    image: golang:1.23-alpine
+    working_dir: /app
+    volumes:
+      - ./backend-services/api:/app
+    ports:
+      - "3000:3000"
+    environment:
+      - SERVER_ADDRESS=0.0.0.0
+      - SERVER_PORT=3000
+    command: sh -c "cd cmd/api_simple && go run main.go"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  redis_data:
+  ganache_data:

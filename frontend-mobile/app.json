@@ -1,0 +1,45 @@
+{
+  "name": "SupplyChainFinance",
+  "displayName": "供应链金融",
+  "expo": {
+    "name": "SupplyChainFinance",
+    "slug": "supplychain-finance",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.supplychain.finance",
+      "infoPlist": {
+        "NSCameraUsageDescription": "需要相机权限来扫描二维码",
+        "NSFaceIDUsageDescription": "需要FaceID来进行生物识别认证"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "package": "com.supplychain.finance",
+      "permissions": [
+        "CAMERA",
+        "USE_FINGERPRINT",
+        "USE_BIOMETRIC",
+        "VIBRATE",
+        "WAKE_LOCK"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

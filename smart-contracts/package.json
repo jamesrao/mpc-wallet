@@ -1,0 +1,22 @@
+{
+  "name": "smart-contracts",
+  "version": "1.0.0",
+  "description": "Smart contracts for MPC Web3 Wallet",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:mumbai": "hardhat run scripts/deploy.js --network polygon_mumbai",
+    "deploy:bsc": "hardhat run scripts/deploy.js --network bsc_testnet",
+    "clean": "hardhat clean"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "hardhat": "^2.19.0",
+    "dotenv": "^16.0.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.0"
+  }
+}

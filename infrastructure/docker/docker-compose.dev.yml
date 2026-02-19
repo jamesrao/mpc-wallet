@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+  # 数据库服务
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: supplychain_finance
+      POSTGRES_USER: supplychain_admin
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - supplychain-network
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - supplychain-network
+
+  # 区块链节点 (本地测试)
+  ganache:
+    image: trufflesuite/ganache-cli:latest
+    command: >
+      --deterministic
+      --accounts 10
+      --account_keys_path /app/accounts.json
+      --db /app/chaindata
+    ports:
+      - "8545:8545"
+    volumes:
+      - ganache_data:/app/chaindata
+    networks:
+      - supplychain-network
+
+  # 区块链中间件
+  blockchain-middleware:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.middleware
+    environment:
+      DATABASE_URL: postgresql://supplychain_admin:dev_password@postgres:5432/supplychain_finance
+      REDIS_URL: redis://redis:6379
+      ETHEREUM_RPC_URL: http://ganache:8545
+      NODE_ENV: development
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+      - ganache
+    networks:
+      - supplychain-network
+
+  # MPC核心服务
+  mpc-core:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.mpc
+    environment:
+      RUST_LOG: info
+      MPC_THRESHOLD: 2
+      MPC_TOTAL_SHARES: 3
+    ports:
+      - "3000:3000"
+    networks:
+      - supplychain-network
+
+  # 前端Web应用
+  frontend-web:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.frontend
+    environment:
+      API_BASE_URL: http://blockchain-middleware:8080
+      NODE_ENV: development
+    ports:
+      - "80:80"
+    depends_on:
+      - blockchain-middleware
+    networks:
+      - supplychain-network
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "443:443"
+      - "80:80"
+    depends_on:
+      - blockchain-middleware
+      - frontend-web
+    networks:
+      - supplychain-network
+
+  # 监控服务
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - supplychain-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - supplychain-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  ganache_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  supplychain-network:
+    driver: bridge

@@ -1,0 +1,181 @@
+# Prometheus告警规则配置
+groups:
+  # API服务告警规则
+  - name: api_alerts
+    rules:
+      # API服务宕机告警
+      - alert: APIServiceDown
+        expr: up{job="mpc-wallet-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "API服务已宕机"
+          description: "API服务 {{ $labels.instance }} 已宕机超过1分钟"
+
+      # API高延迟告警
+      - alert: APIHighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="mpc-wallet-api"}[5m])) > 1
+        for: 2m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "API响应延迟过高"
+          description: "API服务 {{ $labels.instance }} 95%响应延迟超过1秒"
+
+      # API错误率过高告警
+      - alert: APIHighErrorRate
+        expr: rate(http_requests_total{job="mpc-wallet-api", status=~"5.."}[5m]) / rate(http_requests_total{job="mpc-wallet-api"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "API错误率过高"
+          description: "API服务 {{ $labels.instance }} 错误率超过5%"
+
+  # MPC服务告警规则
+  - name: mpc_alerts
+    rules:
+      # MPC服务宕机告警
+      - alert: MPCServiceDown
+        expr: up{job="mpc-core"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: mpc
+        annotations:
+          summary: "MPC服务已宕机"
+          description: "MPC核心服务 {{ $labels.instance }} 已宕机超过1分钟"
+
+      # MPC密钥生成失败告警
+      - alert: MPCKeyGenFailure
+        expr: rate(mpc_keygen_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: mpc
+        annotations:
+          summary: "MPC密钥生成失败"
+          description: "MPC服务 {{ $labels.instance }} 密钥生成失败"
+
+  # 区块链服务告警规则
+  - name: blockchain_alerts
+    rules:
+      # 区块链中间件宕机告警
+      - alert: BlockchainServiceDown
+        expr: up{job="blockchain-middleware"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: blockchain
+        annotations:
+          summary: "区块链服务已宕机"
+          description: "区块链中间件 {{ $labels.instance }} 已宕机超过1分钟"
+
+      # RPC连接失败告警
+      - alert: RPCConnectionFailure
+        expr: rate(blockchain_rpc_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: blockchain
+        annotations:
+          summary: "区块链RPC连接失败"
+          description: "区块链服务 {{ $labels.instance }} RPC连接失败"
+
+  # 数据库告警规则
+  - name: database_alerts
+    rules:
+      # 数据库连接数过高告警
+      - alert: DatabaseHighConnections
+        expr: pg_stat_database_numbackends{datname="mpc_wallet"} > 50
+        for: 2m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "数据库连接数过高"
+          description: "数据库 {{ $labels.instance }} 连接数超过50"
+
+      # 数据库慢查询告警
+      - alert: DatabaseSlowQueries
+        expr: rate(pg_stat_database_tup_returned{datname="mpc_wallet"}[5m]) / rate(pg_stat_database_tup_fetched{datname="mpc_wallet"}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "数据库慢查询过多"
+          description: "数据库 {{ $labels.instance }} 慢查询比例过高"
+
+  # 系统资源告警规则
+  - name: system_alerts
+    rules:
+      # 高CPU使用率告警
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU使用率过高"
+          description: "实例 {{ $labels.instance }} CPU使用率超过80%"
+
+      # 高内存使用率告警
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "内存使用率过高"
+          description: "实例 {{ $labels.instance }} 内存使用率超过85%"
+
+      # 磁盘空间不足告警
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes * 100) < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "磁盘空间不足"
+          description: "实例 {{ $labels.instance }} 磁盘空间不足10%"
+
+  # 业务指标告警规则
+  - name: business_alerts
+    rules:
+      # 用户注册异常告警
+      - alert: UserRegistrationAnomaly
+        expr: abs(delta(user_registrations_total[1h])) > 100
+        for: 10m
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "用户注册异常"
+          description: "用户注册数量异常变化"
+
+      # 交易失败率过高告警
+      - alert: HighTransactionFailureRate
+        expr: rate(transaction_failures_total[1h]) / rate(transactions_total[1h]) > 0.1
+        for: 15m
+        labels:
+          severity: critical
+          service: business
+        annotations:
+          summary: "交易失败率过高"
+          description: "交易失败率超过10%"
+
+      # 钱包创建失败告警
+      - alert: WalletCreationFailure
+        expr: rate(wallet_creation_failures_total[30m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+          service: business
+        annotations:
+          summary: "钱包创建失败"
+          description: "钱包创建失败次数过多"

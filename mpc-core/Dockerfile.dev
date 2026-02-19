@@ -1,0 +1,61 @@
+# MPC核心服务开发环境Dockerfile
+
+FROM rust:1.93-alpine as builder
+
+# 安装依赖 (Alpine使用apk)
+RUN apk add --no-cache \
+    pkgconfig \
+    openssl-dev \
+    musl-dev \
+    gcc \
+    make
+
+# 设置Rust国内镜像（清华）
+RUN mkdir -p /usr/local/cargo && \
+    echo '[source.crates-io]' > /usr/local/cargo/config.toml && \
+    echo 'replace-with = "tuna"' >> /usr/local/cargo/config.toml && \
+    echo '[source.tuna]' >> /usr/local/cargo/config.toml && \
+    echo 'registry = "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git"' >> /usr/local/cargo/config.toml
+
+WORKDIR /app
+
+# 复制Cargo文件
+COPY Cargo.toml Cargo.lock ./
+
+# 创建虚拟项目以缓存依赖
+RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+    echo "pub fn lib() {}" > src/lib.rs
+
+# 构建依赖
+RUN cargo build --release
+
+# 复制源代码
+COPY src ./src
+
+# 重新构建实际项目
+RUN touch src/main.rs && touch src/lib.rs
+RUN cargo build --release --bin mpc-core
+
+# 运行阶段
+FROM alpine:latest
+
+# 安装运行时依赖
+RUN apk add --no-cache ca-certificates
+
+# 创建非root用户 (Alpine使用adduser)
+RUN adduser -S -u 1000 mpcuser
+
+# 复制可执行文件
+COPY --from=builder /app/target/release/mpc-core /usr/local/bin/mpc-core
+
+# 设置工作目录
+WORKDIR /app
+
+# 切换到非root用户
+USER mpcuser
+
+# 暴露端口
+EXPOSE 8080
+
+# 启动服务
+CMD ["mpc-core"]

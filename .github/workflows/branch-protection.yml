@@ -1,0 +1,40 @@
+# 分支保护规则配置
+# 此文件配置GitHub仓库的分支保护规则，确保代码质量
+
+# 主要分支保护规则
+main:
+  required_status_checks:
+    strict: true
+    contexts:
+      - "code-quality"
+      - "unit-tests / rust"
+      - "unit-tests / go" 
+      - "unit-tests / nodejs"
+      - "integration-tests"
+      - "security-scan"
+  required_pull_request_reviews:
+    required_approving_review_count: 1
+    dismiss_stale_reviews: true
+    require_code_owner_reviews: true
+  enforce_admins: false
+  restrictions: null
+  required_linear_history: true
+  allow_force_pushes: false
+  allow_deletions: false
+
+# 开发分支保护规则
+develop:
+  required_status_checks:
+    strict: false
+    contexts:
+      - "code-quality"
+      - "unit-tests / rust"
+      - "unit-tests / go"
+      - "unit-tests / nodejs"
+  required_pull_request_reviews:
+    required_approving_review_count: 0
+  enforce_admins: false
+  restrictions: null
+  required_linear_history: false
+  allow_force_pushes: false
+  allow_deletions: false

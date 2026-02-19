@@ -1,0 +1,12 @@
+{
+  "registry-mirrors": [
+    "https://hub-mirror.c.163.com/",
+    "https://mirror.baidubce.com/",
+    "https://dockerproxy.com"
+  ],
+  "insecure-registries": [],
+  "debug": true,
+  "experimental": false,
+  "max-concurrent-downloads": 3,
+  "max-concurrent-uploads": 3
+}

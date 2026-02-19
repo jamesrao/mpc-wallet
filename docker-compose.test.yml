@@ -1,0 +1,175 @@
+version: '3.8'
+
+services:
+  # Ganache区块链节点（测试环境）
+  ganache-test:
+    image: trufflesuite/ganache:latest
+    container_name: mpc-wallet-ganache-test
+    ports:
+      - "8545:8545"
+    command:
+      - "--wallet.seed=mpc_wallet_seed_1234567890"
+      - "--database.dbPath=/data"
+      - "--miner.blockTime=2"
+      - "--chain.chainId=1337"
+    volumes:
+      - ganache_test_data:/data
+
+  # PostgreSQL数据库（测试环境）
+  postgres-test:
+    image: postgres:14-alpine
+    container_name: mpc-wallet-postgres-test
+    environment:
+      POSTGRES_DB: mpc_wallet_test
+      POSTGRES_USER: mpc_test_user
+      POSTGRES_PASSWORD: test_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mpc_test_user -d mpc_wallet_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis缓存（测试环境）
+  redis-test:
+    image: redis:7-alpine
+    container_name: mpc-wallet-redis-test
+    ports:
+      - "6380:6379"
+    command: redis-server --requirepass test_redis_password
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # MPC核心服务（测试环境）
+  mpc-core-test:
+    build:
+      context: ./mpc-core
+      dockerfile: Dockerfile
+    container_name: mpc-wallet-mpc-test
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgresql://mpc_test_user:test_password@postgres-test:5432/mpc_wallet_test
+      - REDIS_URL=redis://:test_redis_password@redis-test:6379/0
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 区块链中间件（测试环境）
+  blockchain-middleware-test:
+    build:
+      context: ./blockchain-middleware
+      dockerfile: Dockerfile
+    container_name: mpc-wallet-blockchain-test
+    environment:
+      - ETHEREUM_RPC_URL=https://goerli.infura.io/v3/test_project_id
+      - POLYGON_RPC_URL=https://polygon-mumbai.infura.io/v3/test_project_id
+      - BSC_RPC_URL=https://data-seed-prebsc-1-s1.binance.org:8545
+      - API_SERVICE_URL=http://api-service-test:3000
+      - MPC_CORE_URL=http://mpc-core-test:8081
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mpc-core-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API服务（测试环境）
+  api-service-test:
+    build:
+      context: ./backend-services/api
+      dockerfile: Dockerfile
+    container_name: mpc-wallet-api-test
+    environment:
+      - APP_ENV=test
+      - DB_HOST=postgres-test
+      - DB_PORT=5432
+      - DB_USER=mpc_test_user
+      - DB_PASSWORD=test_password
+      - DB_NAME=mpc_wallet_test
+      - REDIS_URL=redis://:test_redis_password@redis-test:6379/0
+      - JWT_SECRET=test_jwt_secret_key_for_testing
+      - FACEBOOK_APP_ID=test_app_id
+      - FACEBOOK_APP_SECRET=test_app_secret
+      - FACEBOOK_REDIRECT_URI=http://localhost:3000/api/v1/auth/facebook/callback
+      - MPC_CORE_URL=http://mpc-core-test:8081
+      - BLOCKCHAIN_MIDDLEWARE_URL=http://blockchain-middleware-test:8082
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      mpc-core-test:
+        condition: service_healthy
+      blockchain-middleware-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Prometheus监控（测试环境）
+  prometheus-test:
+    image: prom/prometheus:latest
+    container_name: mpc-wallet-prometheus-test
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus-test.yml:/etc/prometheus/prometheus.yml
+      - prometheus_test_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    depends_on:
+      - api-service-test
+      - mpc-core-test
+      - blockchain-middleware-test
+
+  # Grafana仪表板（测试环境）
+  grafana-test:
+    image: grafana/grafana:latest
+    container_name: mpc-wallet-grafana-test
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_test_data:/var/lib/grafana
+      - ./monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana-datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus-test
+
+volumes:
+  postgres_test_data:
+  redis_test_data:
+  ganache_test_data:
+  prometheus_test_data:
+  grafana_test_data:
