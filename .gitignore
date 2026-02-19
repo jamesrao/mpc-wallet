@@ -8,6 +8,13 @@ yarn-error.log*
 # Rust编译输出
 mpc-core/target/
 **/*.rs.bk
+**/*.o
+**/*.d
+**/*.rmeta
+**/*.rlib
+**/Cargo.lock
+mpc-core/**/*.txt
+mpc-core/**/*.json
 
 # Go编译输出
 backend-services/api/bin/
