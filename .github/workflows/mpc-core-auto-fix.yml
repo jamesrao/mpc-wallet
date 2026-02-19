@@ -1,0 +1,58 @@
+name: MPC Core 自动修复
+
+on:
+  workflow_run:
+    workflows: ["MPC Core 专项测试"]
+    types:
+      - completed
+
+jobs:
+  analyze-failures:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: 下载测试报告
+      uses: actions/download-artifact@v3
+      with:
+        name: mpc-core-test-results
+        path: /tmp/test-results
+    
+    - name: 分析失败原因
+      run: |
+        echo "🔍 分析 MPC Core 测试失败原因..."
+        # 这里可以集成 AI 分析工具
+        echo "📋 建议修复方案:"
+        echo "1. 检查依赖版本兼容性"
+        echo "2. 验证 Rust 编译器版本"
+        echo "3. 运行 cargo update"
+        echo "4. 检查测试环境配置"
+    
+    - name: 创建修复 Issue
+      uses: actions/github-script@v6
+      with:
+        script: |
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `[自动修复] MPC Core 测试失败 - ${new Date().toISOString()}`,
+            body: `测试运行失败，需要人工检查以下问题：\n\n1. 单元测试失败详情\n2. 集成测试环境问题\n3. 依赖兼容性问题\n\n请查看测试报告并修复。`,
+            labels: ['bug', 'mpc-core', 'auto-generated']
+          })
+
+  auto-fix-attempt:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    needs: analyze-failures
+    runs-on: ubuntu-latest
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 尝试自动修复
+      run: |
+        echo "🔧 尝试自动修复..."
+        cd mpc-core
+        # 尝试更新依赖
+        cargo update
+        # 清理构建缓存
+        cargo clean
+        echo "✅ 自动修复步骤完成，请重新运行测试"
