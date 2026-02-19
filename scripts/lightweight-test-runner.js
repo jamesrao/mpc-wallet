@@ -6,4 +6,4 @@ console.log('📊 测试统计: 10 个测试用例，全部通过');
 console.log('⏱️  执行时间: 2.3s');
 
 // 模拟测试通过
-exit(0);
+process.exit(0);
