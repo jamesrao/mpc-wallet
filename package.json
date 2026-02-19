@@ -1,7 +1,7 @@
 {
   "name": "mpc-wallet",
   "version": "1.0.0",
-  "description": "基于门限签名（MPC）技术的企业级Web3钱包，专注于跨境电商区块链供应链金融平台。",
+  "description": "Enterprise-grade Web3 wallet based on Multi-Party Computation (MPC) technology, focused on cross-border e-commerce blockchain supply chain finance platform. Provides secure digital asset management and supply chain finance solutions.",
   "main": "index.js",
 
   "scripts": {
